@@ -27,13 +27,20 @@ typedef struct _embed_http_instance
     char host[];
 }EmbedHttpInstance;
 
+typedef struct _embed_http_buffer
+{
+    struct _embed_http_buffer *next;
+
+    uint32_t size;
+    uint8_t buffer[];
+}EmbedHttpBuffer;
+
 typedef struct _embed_http_task
 {
     EmbedHttpInstance *http;
 
-    uint8_t *buffer;
-    uint32_t size;
     uint32_t pos;
+    EmbedHttpBuffer *buffer;
 }EmbedHttpTask;
 
 typedef struct

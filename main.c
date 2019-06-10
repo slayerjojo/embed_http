@@ -37,30 +37,9 @@ int main(int argc, const char *argv[])
     while (!(ret = embed_http_request(http, &task, argv[3], HTTP_METHOD_GET)));
     if (ret < 0)
         return -1;
-
-    while (!(ret = embed_http_task_update(&task)));
-    if (ret < 0)
-        return -1;
-
-    while (!(ret = embed_http_header_add(http, &task, "Host", argv[1])));
-    if (ret < 0)
-        return -1;
-
-    while (!(ret = embed_http_task_update(&task)));
-    if (ret < 0)
-        return -1;
-
-    while (!(ret = embed_http_header_add(http, &task, "Content-Length", "0")));
-    if (ret < 0)
-        return -1;
-
-    while (!(ret = embed_http_task_update(&task)));
-    if (ret < 0)
-        return -1;
-
-    while (!(ret = embed_http_header_end(http, &task)));
-    if (ret < 0)
-        return -1;
+    embed_http_header_add(http, &task, "Host", argv[1]);
+    embed_http_header_add(http, &task, "Content-Length", "0");
+    embed_http_header_end(http, &task);
 
     while (!(ret = embed_http_task_update(&task)));
     if (ret < 0)

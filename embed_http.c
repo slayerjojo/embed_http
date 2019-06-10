@@ -68,7 +68,6 @@ int embed_http_connected(EmbedHttpInstance *http)
         {
             if (errno != EINPROGRESS && errno != EALREADY && errno != EISCONN)
             {
-                printf("%d %d %s\n", EINPROGRESS, errno, strerror(errno));
                 close(http->fp);
                 http->fp = -1;
                 http->state = 1;
@@ -94,7 +93,9 @@ int embed_http_task_update(EmbedHttpTask *task)
     EmbedHttpInstance *http = task->http;
     if (4 != http->state)
         return -1;
-    int ret = send(http->fp, task->buffer + task->pos, task->size - task->pos, 0);
+    if (!task->buffer)
+        return 0;
+    int ret = send(http->fp, task->buffer->buffer + task->pos, task->buffer->size - task->pos, 0);
     if (0 == ret)
     {
         close(http->fp);
@@ -112,41 +113,78 @@ int embed_http_task_update(EmbedHttpTask *task)
         return -1;
     }
     task->pos += ret;
-    if (task->pos >= task->size)
+    if (task->pos >= task->buffer->size)
     {
-        free(task->buffer);
-        task->buffer = 0;
+        task->pos = 0;
+        EmbedHttpBuffer *buffer = task->buffer;
+        task->buffer = task->buffer->next;
+        free(buffer);
+
+        if (task->buffer)
+            return 0;
         http->state = 3;
         return 1;
     }
     return 0;
 }
 
+static uint8_t *task_buffer_add(EmbedHttpTask *task, uint32_t size)
+{
+    EmbedHttpBuffer *buffer = (EmbedHttpBuffer *)malloc(sizeof(EmbedHttpBuffer) + size + 1);
+    if (!buffer)
+        return 0;
+    buffer->size = size;
+    buffer->next = 0;
+    if (!task->buffer)
+    {
+        task->buffer = buffer;
+    }
+    else
+    {
+        EmbedHttpBuffer *tail = task->buffer;
+        while (tail->next)
+            tail = tail->next;
+        tail->next = buffer;
+    }
+    return buffer->buffer;
+}
+
 int embed_http_request(EmbedHttpInstance *http, EmbedHttpTask *task, const char *path, EmbedHttpMethod method)
 {
+    uint32_t size = 0;
+    uint8_t *buffer = 0;
     if (!task)
         return -1;
-    if (3 != http->state)
-        return -1;
-
-    task->http = http;
-    task->pos = 0;
-    task->size = 0;
+    switch (http->state)
+    {
+        case 3:
+        {
+            task->http = http;
+            task->pos = 0;
+            task->buffer = 0;
+            break;
+        }
+        case 4:
+            break;
+        default:
+            return -1;
+    }
     if (HTTP_METHOD_PUT == method)
-        task->size = 4;
+        size = 4;
     else if (HTTP_METHOD_GET == method)
-        task->size = 4;
-    task->size += strlen(path);
-    task->size += 1 + 8 + 2;
-    task->buffer = malloc(task->size + 1);
-    if (!task->buffer)
+        size = 4;
+    size += strlen(path);
+    size += 1 + 8 + 2;
+
+    buffer = task_buffer_add(task, size);
+    if (!buffer)
         return 0;
     if (HTTP_METHOD_PUT == method)
-        strcpy(task->buffer, "PUT ");
+        strcpy(buffer, "PUT ");
     else if (HTTP_METHOD_GET == method)
-        strcpy(task->buffer, "GET ");
-    strcat(task->buffer, path);
-    strcat(task->buffer, " HTTP/1.1\r\n");
+        strcpy(buffer, "GET ");
+    strcat(buffer, path);
+    strcat(buffer, " HTTP/1.1\r\n");
     http->state = 4;
 
     http->response = 0;
@@ -273,21 +311,31 @@ int embed_http_response(EmbedHttpInstance *http, EmbedHttpResponse *responser)
 
 int embed_http_header_add(EmbedHttpInstance *http, EmbedHttpTask *task, const char *key, const char *value)
 {
+    uint8_t *buffer = 0;
     if (!task)
         return -1;
-    if (3 != http->state)
-        return -1;
+    switch (http->state)
+    {
+        case 3:
+        {
+            task->http = http;
+            task->pos = 0;
+            task->buffer = 0;
+            break;
+        }
+        case 4:
+            break;
+        default:
+            return -1;
+    }
 
-    task->http = http;
-    task->pos = 0;
-    task->size = strlen(key) + 2 + strlen(value) + 2;
-    task->buffer = malloc(task->size + 1);
-    if (!task->buffer)
+    buffer = task_buffer_add(task, strlen(key) + 2 + strlen(value) + 2);
+    if (!buffer)
         return 0;
-    strcpy(task->buffer, key);
-    strcat(task->buffer, ": ");
-    strcat(task->buffer, value);
-    strcat(task->buffer, "\r\n");
+    strcpy(buffer, key);
+    strcat(buffer, ": ");
+    strcat(buffer, value);
+    strcat(buffer, "\r\n");
     http->state = 4;
 
     return 1;
@@ -295,18 +343,28 @@ int embed_http_header_add(EmbedHttpInstance *http, EmbedHttpTask *task, const ch
 
 int embed_http_header_end(EmbedHttpInstance *http, EmbedHttpTask *task)
 {
+    uint8_t *buffer = 0;
     if (!task)
         return -1;
-    if (3 != http->state)
-        return -1;
+    switch (http->state)
+    {
+        case 3:
+        {
+            task->http = http;
+            task->pos = 0;
+            task->buffer = 0;
+            break;
+        }
+        case 4:
+            break;
+        default:
+            return -1;
+    }
 
-    task->http = http;
-    task->pos = 0;
-    task->size = 2;
-    task->buffer = malloc(2 + 1);
-    if (!task->buffer)
+    buffer = task_buffer_add(task, 2);
+    if (!buffer)
         return 0;
-    strcpy(task->buffer, "\r\n");
+    strcpy(buffer, "\r\n");
     http->state = 4;
 
     return 1;
@@ -314,18 +372,28 @@ int embed_http_header_end(EmbedHttpInstance *http, EmbedHttpTask *task)
 
 int embed_http_body_append(EmbedHttpInstance *http, EmbedHttpTask *task, void *data, uint32_t size)
 {
+    uint8_t *buffer = 0;
     if (!task)
         return -1;
-    if (3 != http->state)
-        return -1;
+    switch (http->state)
+    {
+        case 3:
+        {
+            task->http = http;
+            task->pos = 0;
+            task->buffer = 0;
+            break;
+        }
+        case 4:
+            break;
+        default:
+            return -1;
+    }
 
-    task->http = http;
-    task->pos = 0;
-    task->size = size;
-    task->buffer = malloc(task->size);
-    if (!task->buffer)
+    buffer = task_buffer_add(task, size);
+    if (!buffer)
         return 0;
-    memcpy(task->buffer, data, size);
+    memcpy(buffer, data, size);
     http->state = 4;
 
     return 1;
