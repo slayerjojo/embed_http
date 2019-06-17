@@ -6,7 +6,7 @@
 
 typedef enum {
     HTTP_METHOD_GET = 0,
-    HTTP_METHOD_PUT
+    HTTP_METHOD_POST
 }EmbedHttpMethod;
 
 typedef struct _embed_http_instance
@@ -32,7 +32,7 @@ typedef struct _embed_http_buffer
     struct _embed_http_buffer *next;
 
     uint32_t size;
-    uint8_t buffer[];
+    char buffer[];
 }EmbedHttpBuffer;
 
 typedef struct _embed_http_task
@@ -54,7 +54,9 @@ EmbedHttpInstance *embed_http_create(const char *host, uint16_t port);
 void embed_http_release(EmbedHttpInstance *http);
 
 int embed_http_connected(EmbedHttpInstance *http);
+
 int embed_http_task_update(EmbedHttpTask *task);
+void embed_http_task_clean(EmbedHttpTask *task);
 
 int embed_http_request(EmbedHttpInstance *http, EmbedHttpTask *task, const char *path, EmbedHttpMethod method);
 int embed_http_response(EmbedHttpInstance *http, EmbedHttpResponse *responser);

@@ -94,13 +94,15 @@ int embed_http_task_update(EmbedHttpTask *task)
     if (4 != http->state)
         return -1;
     if (!task->buffer)
-        return 0;
+        return 1;
     int ret = send(http->fp, task->buffer->buffer + task->pos, task->buffer->size - task->pos, 0);
     if (0 == ret)
     {
         close(http->fp);
         http->fp = -1;
         http->state = 1;
+
+        embed_http_task_clean(task);
         return -1;
     }
     if (ret < 0)
@@ -110,6 +112,8 @@ int embed_http_task_update(EmbedHttpTask *task)
         close(http->fp);
         http->fp = -1;
         http->state = 1;
+
+        embed_http_task_clean(task);
         return -1;
     }
     task->pos += ret;
@@ -128,7 +132,20 @@ int embed_http_task_update(EmbedHttpTask *task)
     return 0;
 }
 
-static uint8_t *task_buffer_add(EmbedHttpTask *task, uint32_t size)
+void embed_http_task_clean(EmbedHttpTask *task)
+{
+    if (!task)
+        return;
+    
+    while (task->buffer)
+    {
+        EmbedHttpBuffer *buffer = task->buffer;
+        task->buffer = task->buffer->next;
+        free(buffer);
+    }
+}
+
+static char *task_buffer_add(EmbedHttpTask *task, uint32_t size)
 {
     EmbedHttpBuffer *buffer = (EmbedHttpBuffer *)malloc(sizeof(EmbedHttpBuffer) + size + 1);
     if (!buffer)
@@ -152,7 +169,7 @@ static uint8_t *task_buffer_add(EmbedHttpTask *task, uint32_t size)
 int embed_http_request(EmbedHttpInstance *http, EmbedHttpTask *task, const char *path, EmbedHttpMethod method)
 {
     uint32_t size = 0;
-    uint8_t *buffer = 0;
+    char *buffer = 0;
     if (!task)
         return -1;
     switch (http->state)
@@ -169,8 +186,8 @@ int embed_http_request(EmbedHttpInstance *http, EmbedHttpTask *task, const char 
         default:
             return -1;
     }
-    if (HTTP_METHOD_PUT == method)
-        size = 4;
+    if (HTTP_METHOD_POST == method)
+        size = 5;
     else if (HTTP_METHOD_GET == method)
         size = 4;
     size += strlen(path);
@@ -179,8 +196,8 @@ int embed_http_request(EmbedHttpInstance *http, EmbedHttpTask *task, const char 
     buffer = task_buffer_add(task, size);
     if (!buffer)
         return 0;
-    if (HTTP_METHOD_PUT == method)
-        strcpy(buffer, "PUT ");
+    if (HTTP_METHOD_POST == method)
+        strcpy(buffer, "POST ");
     else if (HTTP_METHOD_GET == method)
         strcpy(buffer, "GET ");
     strcat(buffer, path);
@@ -299,7 +316,7 @@ int embed_http_response(EmbedHttpInstance *http, EmbedHttpResponse *responser)
         else if (2 == http->response)
         {
             if (responser->body)
-                responser->body(http->offset, http->buffer, http->pos);
+                responser->body(http->offset, (uint8_t *)http->buffer, http->pos);
             http->offset += http->pos;
             http->pos = 0;
             if (http->size == http->offset)
@@ -311,7 +328,7 @@ int embed_http_response(EmbedHttpInstance *http, EmbedHttpResponse *responser)
 
 int embed_http_header_add(EmbedHttpInstance *http, EmbedHttpTask *task, const char *key, const char *value)
 {
-    uint8_t *buffer = 0;
+    char *buffer = 0;
     if (!task)
         return -1;
     switch (http->state)
@@ -343,7 +360,7 @@ int embed_http_header_add(EmbedHttpInstance *http, EmbedHttpTask *task, const ch
 
 int embed_http_header_end(EmbedHttpInstance *http, EmbedHttpTask *task)
 {
-    uint8_t *buffer = 0;
+    char *buffer = 0;
     if (!task)
         return -1;
     switch (http->state)
@@ -372,7 +389,7 @@ int embed_http_header_end(EmbedHttpInstance *http, EmbedHttpTask *task)
 
 int embed_http_body_append(EmbedHttpInstance *http, EmbedHttpTask *task, void *data, uint32_t size)
 {
-    uint8_t *buffer = 0;
+    char *buffer = 0;
     if (!task)
         return -1;
     switch (http->state)
