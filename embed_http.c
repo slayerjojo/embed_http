@@ -38,7 +38,7 @@ int embed_http_connected(EmbedHttpInstance *http)
 
         struct hostent *ht = gethostbyname(http->host);
         if (!ht)
-            return 0;
+            return -1;
         memcpy(&http->sa.sin_addr, ht->h_addr, ht->h_length);
         http->state = 1;
     }
@@ -51,7 +51,7 @@ int embed_http_connected(EmbedHttpInstance *http)
         }
         http->fp = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (http->fp < 0)
-            return 0;
+            return -2;
 
         int opts = 1;
         setsockopt(http->fp, SOL_SOCKET, SO_REUSEADDR, (void*)&opts, sizeof(opts));
@@ -71,7 +71,7 @@ int embed_http_connected(EmbedHttpInstance *http)
                 close(http->fp);
                 http->fp = -1;
                 http->state = 1;
-                return 0;
+                return -3;
             }
             if (EISCONN == errno)
                 http->state = 3;
