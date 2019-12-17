@@ -8,7 +8,6 @@ LDFLAGS	+= -Wl,-Map,mapfile
 LDFLAGS	+= -lm
 LDFLAGS	+= -lpthread
 LDFLAGS	+= -lstdc++
-LDFLAGS	+= -lcurl
 CXX = gcc
 RM = rm -rf
 
